@@ -102,9 +102,10 @@ export type UploadResult = {
 // ---------------------------------------------------------------- API
 export const api = {
   upload: {
-    statement: (file: File) => {
+    statement: (file: File, password?: string) => {
       const form = new FormData()
       form.append('file', file)
+      if (password) form.append('password', password)
       return request<UploadResult>('/api/upload', { method: 'POST', body: form })
     },
   },
