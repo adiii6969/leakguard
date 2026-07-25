@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { PageHeader } from '@/components/app/page-header'
+import { PdfPasswordDialog } from '@/components/app/pdf-password-dialog'
 import { cn } from '@/lib/utils'
 import { api, ApiError } from '@/lib/api'
 
@@ -28,28 +29,53 @@ export default function UploadPage() {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
+  const [passwordIncorrect, setPasswordIncorrect] = useState(false)
+
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return
     setError(null)
     setFile(files[0])
-    setProgress(100) // file selected & ready to analyze; real progress happens on submit
+    setProgress(100)
   }
 
-  const handleAnalyze = async () => {
-    if (!file) return
+  const runUpload = async (targetFile: File, password?: string) => {
     setUploading(true)
     setError(null)
     try {
-      const result = await api.upload.statement(file)
+      const result = await api.upload.statement(targetFile, password)
+      setPasswordDialogOpen(false)
       router.push(`/processing?statementId=${result.statement_id}`)
     } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.message === 'PDF_PASSWORD_REQUIRED') {
+          setPasswordIncorrect(false)
+          setPasswordDialogOpen(true)
+          setUploading(false)
+          return
+        }
+        if (err.message === 'PDF_PASSWORD_INCORRECT') {
+          setPasswordIncorrect(true)
+          setPasswordDialogOpen(true)
+          setUploading(false)
+          return
+        }
+        setError(err.message)
+      } else {
+        setError('Could not reach the analysis server. Please try again.')
+      }
       setUploading(false)
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : 'Could not reach the analysis server. Please try again.'
-      )
     }
+  }
+
+  const handleAnalyze = () => {
+    if (!file) return
+    runUpload(file)
+  }
+
+  const handlePasswordSubmit = (password: string) => {
+    if (!file) return
+    runUpload(file, password)
   }
 
   return (
@@ -128,6 +154,7 @@ export default function UploadPage() {
                       onClick={() => {
                         setFile(null)
                         setProgress(0)
+                        setError(null)
                       }}
                       aria-label="Remove file"
                       className="text-muted-foreground hover:text-foreground"
@@ -204,6 +231,15 @@ export default function UploadPage() {
           Your file is analyzed in memory and never written to disk or storage — nothing is retained after processing.
         </p>
       </Card>
+
+      <PdfPasswordDialog
+        open={passwordDialogOpen}
+        fileName={file?.name ?? ''}
+        incorrect={passwordIncorrect}
+        submitting={uploading}
+        onSubmit={handlePasswordSubmit}
+        onClose={() => setPasswordDialogOpen(false)}
+      />
     </div>
   )
 }
